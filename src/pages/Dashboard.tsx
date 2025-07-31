@@ -17,14 +17,18 @@ import {
 } from "lucide-react";
 import { useBudget } from "@/contexts/BudgetContext";
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const Dashboard = () => {
   const { getCurrentBalance, getTotalSpent, getBudgetUsagePercentage, getSavingsPercentage } = useBudget();
+  const { toast } = useToast();
   const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState([
     {
       type: 'bot',
-      content: "Hi! I'm FinPilot, your AI financial assistant. I can help you with budgeting, investment planning, expense tracking, and financial advice. What would you like to know?"
+      content: "Hi! I'm FinPilot, your AI financial assistant. I can help you analyze your spending by category and time period. Try asking: 'What did I spend on food last month?' or 'Analyze my transportation expenses from January 1st to January 31st, 2025'."
     }
   ]);
   
@@ -33,13 +37,62 @@ const Dashboard = () => {
   const budgetUsed = getBudgetUsagePercentage();
   const savingsProgress = getSavingsPercentage();
 
-  const handleSendMessage = () => {
-    if (message.trim()) {
-      setMessages([...messages, 
-        { type: 'user', content: message },
-        { type: 'bot', content: "I'm processing your request. This is a demo response - in a real implementation, this would connect to an AI service for financial advice." }
-      ]);
-      setMessage("");
+  const handleSendMessage = async () => {
+    if (!message.trim()) return;
+    
+    const userMessage = message;
+    setMessage("");
+    setIsLoading(true);
+    
+    // Add user message immediately
+    setMessages(prev => [...prev, { type: 'user', content: userMessage }]);
+    
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        toast({
+          title: "Authentication Required",
+          description: "Please sign in to use the AI financial assistant.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Call the AI financial assistant edge function
+      const { data, error } = await supabase.functions.invoke('ai-financial-assistant', {
+        body: {
+          message: userMessage,
+          user_id: user.id
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      // Add AI response
+      setMessages(prev => [...prev, { 
+        type: 'bot', 
+        content: data.message || "I apologize, but I couldn't process your request at the moment. Please try again." 
+      }]);
+
+    } catch (error) {
+      console.error('Error calling AI assistant:', error);
+      
+      setMessages(prev => [...prev, { 
+        type: 'bot', 
+        content: "I'm having trouble connecting to my AI services right now. Please check that you're signed in and try again in a moment." 
+      }]);
+      
+      toast({
+        title: "Error",
+        description: "Failed to get AI response. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -169,14 +222,19 @@ const Dashboard = () => {
                 />
                 <Button 
                   onClick={handleSendMessage}
+                  disabled={isLoading}
                   className="gradient-primary shadow-glow"
                   size="icon"
                 >
-                  <Send className="w-4 h-4" />
+                  {isLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground text-center">
-                Try: "What's my net worth?" or "Simulate my SIP returns"
+                Try: "Analyze my food expenses from 2025-01-01 to 2025-01-31" or "What did I spend on transportation last week?"
               </p>
             </div>
           </CardContent>

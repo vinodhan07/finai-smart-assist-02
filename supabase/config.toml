@@ -1,1 +1,9 @@
 project_id = "mtldnjtcnlululyfhghj"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://localhost:3000"]
+
+[functions.ai-financial-assistant]
+verify_jwt = false
