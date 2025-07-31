@@ -56,28 +56,56 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [income, setIncome] = useState<IncomeSource[]>(initialIncome);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
 
-  // Load data from localStorage on mount (with future Supabase integration ready)
+  // Load data from Supabase on mount
   useEffect(() => {
     const loadData = async () => {
       try {
-        // First, call edge function to set up tables if user is authenticated
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          await supabase.functions.invoke('setup-finance-tables');
-          toast.success('Database connected and tables ready!');
+          // Load budgets
+          const { data: budgetData } = await supabase
+            .from('budget_categories')
+            .select('*')
+            .order('created_at', { ascending: false });
+          
+          // Load income
+          const { data: incomeData } = await supabase
+            .from('income_sources')
+            .select('*')
+            .order('created_at', { ascending: false });
+          
+          // Load transactions
+          const { data: transactionData } = await supabase
+            .from('transactions')
+            .select('*')
+            .order('created_at', { ascending: false });
+          
+          if (budgetData) setBudgets(budgetData);
+          if (incomeData) setIncome(incomeData);
+          if (transactionData) setTransactions(transactionData);
+          
+          toast.success('Data loaded from database!');
+        } else {
+          // Load from localStorage if not authenticated
+          const savedBudgets = localStorage.getItem('budgets');
+          const savedIncome = localStorage.getItem('income');
+          const savedTransactions = localStorage.getItem('transactions');
+          
+          if (savedBudgets) setBudgets(JSON.parse(savedBudgets));
+          if (savedIncome) setIncome(JSON.parse(savedIncome));
+          if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
         }
       } catch (error) {
-        console.log('Database setup in progress, using local storage for now');
+        console.error('Error loading data:', error);
+        // Fallback to localStorage
+        const savedBudgets = localStorage.getItem('budgets');
+        const savedIncome = localStorage.getItem('income');
+        const savedTransactions = localStorage.getItem('transactions');
+        
+        if (savedBudgets) setBudgets(JSON.parse(savedBudgets));
+        if (savedIncome) setIncome(JSON.parse(savedIncome));
+        if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
       }
-
-      // Load from localStorage
-      const savedBudgets = localStorage.getItem('budgets');
-      const savedIncome = localStorage.getItem('income');
-      const savedTransactions = localStorage.getItem('transactions');
-      
-      if (savedBudgets) setBudgets(JSON.parse(savedBudgets));
-      if (savedIncome) setIncome(JSON.parse(savedIncome));
-      if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
     };
 
     loadData();
@@ -96,52 +124,104 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem('transactions', JSON.stringify(transactions));
   }, [transactions]);
 
-  const addIncome = (newIncome: Omit<IncomeSource, 'id'>) => {
-    const existingIncome = income.find(source => source.name === newIncome.name);
-    
-    if (existingIncome && newIncome.name === "Salary") {
-      // For salary, accumulate the amount
-      const updatedIncome = income.map(source => 
-        source.name === "Salary" 
-          ? { ...source, amount: source.amount + newIncome.amount, date: newIncome.date }
-          : source
-      );
-      setIncome(updatedIncome);
-    } else {
-      // For others or new income sources, add as new entry
-      const incomeWithId = {
-        ...newIncome,
-        id: income.length > 0 ? Math.max(...income.map(i => i.id)) + 1 : 1
-      };
-      setIncome([...income, incomeWithId]);
-    }
+  const addIncome = async (newIncome: Omit<IncomeSource, 'id'>) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Save to Supabase
+        const { data: incomeData } = await supabase
+          .from('income_sources')
+          .insert([{ ...newIncome, user_id: user.id }])
+          .select()
+          .single();
 
-    // Add transaction entry
-    const newTransaction: Transaction = {
-      id: transactions.length > 0 ? Math.max(...transactions.map(t => t.id)) + 1 : 1,
-      date: newIncome.date,
-      description: `${newIncome.name} Credit`,
-      amount: newIncome.amount,
-      category: "Income",
-      mode: "Bank Transfer",
-      status: "completed"
-    };
-    setTransactions([newTransaction, ...transactions]);
-    
-    // Try to sync with Supabase in background
-    syncToSupabase();
+        if (incomeData) {
+          setIncome([incomeData, ...income]);
+        }
+
+        // Add transaction entry
+        const { data: transactionData } = await supabase
+          .from('transactions')
+          .insert([{
+            user_id: user.id,
+            date: newIncome.date,
+            description: `${newIncome.name} Credit`,
+            amount: newIncome.amount,
+            category: "Income",
+            mode: "Bank Transfer",
+            status: "completed"
+          }])
+          .select()
+          .single();
+
+        if (transactionData) {
+          setTransactions([transactionData, ...transactions]);
+        }
+        
+        toast.success('Income added successfully!');
+      } else {
+        // Fallback to localStorage logic
+        const existingIncome = income.find(source => source.name === newIncome.name);
+        
+        if (existingIncome && newIncome.name === "Salary") {
+          const updatedIncome = income.map(source => 
+            source.name === "Salary" 
+              ? { ...source, amount: source.amount + newIncome.amount, date: newIncome.date }
+              : source
+          );
+          setIncome(updatedIncome);
+        } else {
+          const incomeWithId = {
+            ...newIncome,
+            id: income.length > 0 ? Math.max(...income.map(i => i.id)) + 1 : 1
+          };
+          setIncome([...income, incomeWithId]);
+        }
+
+        const newTransaction: Transaction = {
+          id: transactions.length > 0 ? Math.max(...transactions.map(t => t.id)) + 1 : 1,
+          date: newIncome.date,
+          description: `${newIncome.name} Credit`,
+          amount: newIncome.amount,
+          category: "Income",
+          mode: "Bank Transfer",
+          status: "completed"
+        };
+        setTransactions([newTransaction, ...transactions]);
+      }
+    } catch (error) {
+      console.error('Error adding income:', error);
+      toast.error('Failed to add income');
+    }
   };
 
-  const addBudget = (newBudget: Omit<BudgetCategory, 'id' | 'spent'>) => {
-    const budgetWithId = {
-      ...newBudget,
-      id: budgets.length > 0 ? Math.max(...budgets.map(b => b.id)) + 1 : 1,
-      spent: 0
-    };
-    setBudgets([...budgets, budgetWithId]);
-    
-    // Try to sync with Supabase in background
-    syncToSupabase();
+  const addBudget = async (newBudget: Omit<BudgetCategory, 'id' | 'spent'>) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('budget_categories')
+          .insert([{ ...newBudget, user_id: user.id, spent: 0 }])
+          .select()
+          .single();
+
+        if (data) {
+          setBudgets([...budgets, data]);
+          toast.success('Budget category added successfully!');
+        }
+      } else {
+        // Fallback to localStorage logic
+        const budgetWithId = {
+          ...newBudget,
+          id: budgets.length > 0 ? Math.max(...budgets.map(b => b.id)) + 1 : 1,
+          spent: 0
+        };
+        setBudgets([...budgets, budgetWithId]);
+      }
+    } catch (error) {
+      console.error('Error adding budget:', error);
+      toast.error('Failed to add budget category');
+    }
   };
 
   const getTotalBudget = () => {
@@ -173,43 +253,74 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return totalIncome > 0 ? Math.round((savings / totalIncome) * 100) : 0;
   };
 
-  const processPayment = (payment: { amount: number; description: string; category: string; merchant: string }) => {
-    // Add transaction for the payment
-    const newTransaction: Transaction = {
-      id: transactions.length > 0 ? Math.max(...transactions.map(t => t.id)) + 1 : 1,
-      date: new Date().toISOString().split('T')[0],
-      description: `${payment.merchant} - ${payment.description}`,
-      amount: -payment.amount, // Negative amount for expense
-      category: payment.category,
-      mode: "UPI",
-      status: "completed"
-    };
-    setTransactions([newTransaction, ...transactions]);
-
-    // Update budget spent amount for the category
-    const updatedBudgets = budgets.map(budget => 
-      budget.name === payment.category 
-        ? { ...budget, spent: budget.spent + payment.amount }
-        : budget
-    );
-    setBudgets(updatedBudgets);
-    
-    // Try to sync with Supabase in background
-    syncToSupabase();
-  };
-
-  // Background sync function
-  const syncToSupabase = async () => {
+  const processPayment = async (payment: { amount: number; description: string; category: string; merchant: string }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // Sync data to Supabase when database is ready
-        console.log('Data ready for sync to Supabase when tables are available');
+        // Add transaction for the payment
+        const { data: transactionData } = await supabase
+          .from('transactions')
+          .insert([{
+            user_id: user.id,
+            date: new Date().toISOString().split('T')[0],
+            description: `${payment.merchant} - ${payment.description}`,
+            amount: -payment.amount,
+            category: payment.category,
+            mode: "UPI",
+            status: "completed"
+          }])
+          .select()
+          .single();
+
+        if (transactionData) {
+          setTransactions([transactionData, ...transactions]);
+        }
+
+        // Update budget spent amount for the category
+        const budgetToUpdate = budgets.find(b => b.name === payment.category);
+        if (budgetToUpdate) {
+          const { data: updatedBudget } = await supabase
+            .from('budget_categories')
+            .update({ spent: budgetToUpdate.spent + payment.amount })
+            .eq('id', budgetToUpdate.id)
+            .select()
+            .single();
+
+          if (updatedBudget) {
+            const updatedBudgets = budgets.map(budget => 
+              budget.id === updatedBudget.id ? updatedBudget : budget
+            );
+            setBudgets(updatedBudgets);
+          }
+        }
+        
+        toast.success('Payment processed successfully!');
+      } else {
+        // Fallback to localStorage logic
+        const newTransaction: Transaction = {
+          id: transactions.length > 0 ? Math.max(...transactions.map(t => t.id)) + 1 : 1,
+          date: new Date().toISOString().split('T')[0],
+          description: `${payment.merchant} - ${payment.description}`,
+          amount: -payment.amount,
+          category: payment.category,
+          mode: "UPI",
+          status: "completed"
+        };
+        setTransactions([newTransaction, ...transactions]);
+
+        const updatedBudgets = budgets.map(budget => 
+          budget.name === payment.category 
+            ? { ...budget, spent: budget.spent + payment.amount }
+            : budget
+        );
+        setBudgets(updatedBudgets);
       }
     } catch (error) {
-      console.log('Supabase sync will be available when database is fully configured');
+      console.error('Error processing payment:', error);
+      toast.error('Failed to process payment');
     }
   };
+
 
   const value: BudgetContextType = {
     budgets,

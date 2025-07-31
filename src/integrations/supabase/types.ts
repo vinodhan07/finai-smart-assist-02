@@ -14,6 +14,72 @@ export type Database = {
   }
   public: {
     Tables: {
+      budget_categories: {
+        Row: {
+          budget: number
+          color: string
+          created_at: string
+          icon: string
+          id: number
+          name: string
+          spent: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          budget?: number
+          color?: string
+          created_at?: string
+          icon?: string
+          id?: number
+          name: string
+          spent?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          budget?: number
+          color?: string
+          created_at?: string
+          icon?: string
+          id?: number
+          name?: string
+          spent?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      income_sources: {
+        Row: {
+          amount: number
+          created_at: string
+          date: string
+          id: number
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          date: string
+          id?: number
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          date?: string
+          id?: number
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -36,6 +102,45 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      transactions: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          date: string
+          description: string
+          id: number
+          mode: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          category: string
+          created_at?: string
+          date: string
+          description: string
+          id?: number
+          mode?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          date?: string
+          description?: string
+          id?: number
+          mode?: string
+          status?: string
           updated_at?: string
           user_id?: string
         }
