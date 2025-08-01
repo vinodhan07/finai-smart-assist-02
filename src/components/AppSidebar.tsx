@@ -9,7 +9,8 @@ import {
   LogOut,
   TrendingUp
 } from "lucide-react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
   SidebarContent,
@@ -35,10 +36,20 @@ const items = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
+  const navigate = useNavigate();
   const currentPath = location.pathname;
   const collapsed = state === 'collapsed';
 
   const isActive = (path: string) => currentPath === path;
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      navigate('/auth');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   return (
     <Sidebar
@@ -93,10 +104,7 @@ export function AppSidebar() {
           <SidebarMenuButton asChild>
             <button
               className="flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sidebar-foreground hover:bg-destructive/10 hover:text-destructive w-full"
-              onClick={() => {
-                // Handle logout
-                console.log("Logout clicked");
-              }}
+              onClick={handleLogout}
             >
               <LogOut className="w-5 h-5" />
               {!collapsed && <span className="font-medium">Logout</span>}
