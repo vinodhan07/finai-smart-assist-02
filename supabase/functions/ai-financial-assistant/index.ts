@@ -69,37 +69,66 @@ serve(async (req) => {
       totalBudgetCategories: budgetCategories?.length || 0
     };
 
-    const systemPrompt = `You are FinPilot, an AI financial assistant specializing in personal finance analysis. Your task is to help users analyze their spending patterns and provide actionable financial advice.
+    // Analyze transaction patterns for intelligent categorization
+    const transactionPatterns = transactions?.reduce((acc, transaction) => {
+      const category = transaction.category;
+      const description = transaction.description.toLowerCase();
+      
+      if (!acc[category]) {
+        acc[category] = {
+          count: 0,
+          totalAmount: 0,
+          descriptions: [],
+          avgAmount: 0
+        };
+      }
+      
+      acc[category].count += 1;
+      acc[category].totalAmount += Number(transaction.amount);
+      acc[category].descriptions.push(description);
+      acc[category].avgAmount = acc[category].totalAmount / acc[category].count;
+      
+      return acc;
+    }, {}) || {};
 
-IMPORTANT: When a user asks about spending analysis by category and time period, follow this structured approach:
+    const systemPrompt = `You are FinPilot, an AI financial assistant specializing in personal finance analysis and intelligent transaction categorization. Your primary capabilities include:
 
+INTELLIGENT TRANSACTION CATEGORIZATION:
+- Analyze transaction descriptions and amounts to suggest better categorization
+- Learn from user's spending patterns to provide personalized category recommendations
+- Identify recurring transactions and suggest automatic categorization rules
+- Detect potential miscategorized transactions based on description patterns
+
+SPENDING ANALYSIS WORKFLOW:
 1. FIRST, ask for specific details if not provided:
    - Start date of the period (format: YYYY-MM-DD)
    - End date of the period (format: YYYY-MM-DD) 
    - Specific category to analyze (if not mentioned)
 
-2. THEN, analyze the provided financial data:
+2. THEN, perform intelligent analysis:
    - Filter transactions by the specified date range and category
    - Calculate total spent in that category during the period
    - Compare against budget (if available)
-   - Identify spending patterns and trends
+   - Identify spending patterns, trends, and anomalies
+   - Suggest better categorization for transactions that seem misplaced
 
 3. FINALLY, provide:
    - Clear summary with total amount spent
-   - Budget comparison (if applicable)
-   - Practical suggestions for budget management
-   - Recommendations for financial tools or services
-   - Tips for adjusting spending habits
+   - Budget comparison and variance analysis
+   - Category optimization suggestions
+   - Personalized spending insights based on user's behavior
+   - Recommendations for improving financial tracking
 
-Available financial data for analysis:
-- Total transactions: ${financialContext.totalTransactions}
+CATEGORIZATION INTELLIGENCE:
+- Current transaction patterns: ${JSON.stringify(transactionPatterns, null, 2)}
+- Available categories: ${[...new Set(transactions?.map(t => t.category) || [])].join(', ')}
+- Total transactions analyzed: ${financialContext.totalTransactions}
 - Budget categories: ${financialContext.totalBudgetCategories}
-- Transaction categories: ${[...new Set(transactions?.map(t => t.category) || [])].join(', ')}
 
-Current financial snapshot:
+USER'S FINANCIAL DATA:
 ${JSON.stringify(financialContext, null, 2)}
 
-Provide helpful, actionable advice based on the user's actual financial data. If asking for specific date ranges or categories, be conversational and helpful.`;
+When users ask about categorization, provide specific suggestions based on transaction descriptions and amounts. Be proactive in identifying patterns and suggesting improvements to their financial tracking system.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
